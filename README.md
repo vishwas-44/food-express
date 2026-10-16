@@ -232,7 +232,10 @@ GitHub: [@vishwas-44](https://github.com/vishwas-44)
 ## 📄 License
 
 No license has been specified yet.
+<<<<<<< HEAD
 =======
 # food-express
 Food Express – Full-stack food ordering web application built with Next.js, Node.js, Express, and Supabase.
 >>>>>>> cdf136e1cebbb81d5d22aeac38643246ab2fb43b
+=======
+>>>>>>> ac9671c (Initial commit: Food Express)
