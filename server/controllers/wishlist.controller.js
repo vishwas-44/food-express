@@ -1,10 +1,27 @@
-
 import supabase from '../config/supabase.js';
 
-// GET: Fetch the logged-in user's wishlist
+const UUID_REGEX =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// Validate the authenticated customer ID.
+const validateCustomerId = (userId) => {
+  return typeof userId === 'string' && UUID_REGEX.test(userId);
+};
+
+// ============================================
+// GET: Fetch the logged-in customer's wishlist
+// ============================================
+
 export const getWishlistController = async (req, res) => {
   try {
     const userId = req.userId;
+
+    if (!validateCustomerId(userId)) {
+      return res.status(403).json({
+        success: false,
+        message: 'A valid customer account is required to access the wishlist.',
+      });
+    }
 
     const { data, error } = await supabase
       .from('wishlists')
@@ -18,7 +35,13 @@ export const getWishlistController = async (req, res) => {
       .order('created_at', { ascending: false });
 
     if (error) {
-      console.error('Get wishlist error:', error);
+      console.error('Get wishlist error:', {
+        message: error.message,
+        code: error.code,
+        details: error.details,
+        hint: error.hint,
+      });
+
       return res.status(500).json({
         success: false,
         message: 'Failed to fetch wishlist.',
@@ -27,10 +50,11 @@ export const getWishlistController = async (req, res) => {
 
     return res.status(200).json({
       success: true,
+      message: 'Wishlist fetched successfully.',
       data: data || [],
     });
   } catch (error) {
-    console.error('Get wishlist error:', error);
+    console.error('Get wishlist server error:', error);
 
     return res.status(500).json({
       success: false,
@@ -39,29 +63,49 @@ export const getWishlistController = async (req, res) => {
   }
 };
 
+// ============================================
 // POST: Add a product to the wishlist
+// ============================================
+
 export const addToWishlistController = async (req, res) => {
   try {
     const userId = req.userId;
-    const { product_id } = req.body;
+    const { product_id } = req.body || {};
 
-    if (!product_id) {
-      return res.status(400).json({
+    if (!validateCustomerId(userId)) {
+      return res.status(403).json({
         success: false,
-        message: 'Product ID is required.',
+        message: 'A valid customer account is required to manage the wishlist.',
       });
     }
 
-    // Confirm that the product exists
-    const { data: product, error: productError } =
-      await supabase
-        .from('products')
-        .select('id')
-        .eq('id', product_id)
-        .maybeSingle();
+    if (
+      typeof product_id !== 'string' ||
+      !UUID_REGEX.test(product_id)
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: 'A valid product ID is required.',
+      });
+    }
+
+    // Confirm that the product exists.
+    const {
+      data: product,
+      error: productError,
+    } = await supabase
+      .from('products')
+      .select('id')
+      .eq('id', product_id)
+      .maybeSingle();
 
     if (productError) {
-      console.error('Product lookup error:', productError);
+      console.error('Product lookup error:', {
+        message: productError.message,
+        code: productError.code,
+        details: productError.details,
+        hint: productError.hint,
+      });
 
       return res.status(500).json({
         success: false,
@@ -76,17 +120,24 @@ export const addToWishlistController = async (req, res) => {
       });
     }
 
-    // Prevent duplicate wishlist entries
-    const { data: existing, error: existingError } =
-      await supabase
-        .from('wishlists')
-        .select('id')
-        .eq('user_id', userId)
-        .eq('product_id', product_id)
-        .maybeSingle();
+    // Check whether this product is already in the wishlist.
+    const {
+      data: existing,
+      error: existingError,
+    } = await supabase
+      .from('wishlists')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('product_id', product_id)
+      .maybeSingle();
 
     if (existingError) {
-      console.error('Wishlist lookup error:', existingError);
+      console.error('Wishlist lookup error:', {
+        message: existingError.message,
+        code: existingError.code,
+        details: existingError.details,
+        hint: existingError.hint,
+      });
 
       return res.status(500).json({
         success: false,
@@ -102,7 +153,11 @@ export const addToWishlistController = async (req, res) => {
       });
     }
 
-    const { data, error } = await supabase
+    // Add the product.
+    const {
+      data,
+      error,
+    } = await supabase
       .from('wishlists')
       .insert({
         user_id: userId,
@@ -112,7 +167,20 @@ export const addToWishlistController = async (req, res) => {
       .single();
 
     if (error) {
-      console.error('Add wishlist error:', error);
+      console.error('Add wishlist error:', {
+        message: error.message,
+        code: error.code,
+        details: error.details,
+        hint: error.hint,
+      });
+
+      // PostgreSQL unique-constraint violation.
+      if (error.code === '23505') {
+        return res.status(200).json({
+          success: true,
+          message: 'Product is already in your wishlist.',
+        });
+      }
 
       return res.status(500).json({
         success: false,
@@ -126,7 +194,7 @@ export const addToWishlistController = async (req, res) => {
       data,
     });
   } catch (error) {
-    console.error('Add wishlist error:', error);
+    console.error('Add wishlist server error:', error);
 
     return res.status(500).json({
       success: false,
@@ -135,20 +203,36 @@ export const addToWishlistController = async (req, res) => {
   }
 };
 
+// ============================================
 // DELETE: Remove a product from the wishlist
+// ============================================
+
 export const removeFromWishlistController = async (req, res) => {
   try {
     const userId = req.userId;
     const { productId } = req.params;
 
-    if (!productId) {
-      return res.status(400).json({
+    if (!validateCustomerId(userId)) {
+      return res.status(403).json({
         success: false,
-        message: 'Product ID is required.',
+        message: 'A valid customer account is required to manage the wishlist.',
       });
     }
 
-    const { data, error } = await supabase
+    if (
+      typeof productId !== 'string' ||
+      !UUID_REGEX.test(productId)
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: 'A valid product ID is required.',
+      });
+    }
+
+    const {
+      data,
+      error,
+    } = await supabase
       .from('wishlists')
       .delete()
       .eq('user_id', userId)
@@ -156,7 +240,12 @@ export const removeFromWishlistController = async (req, res) => {
       .select('id');
 
     if (error) {
-      console.error('Remove wishlist error:', error);
+      console.error('Remove wishlist error:', {
+        message: error.message,
+        code: error.code,
+        details: error.details,
+        hint: error.hint,
+      });
 
       return res.status(500).json({
         success: false,
@@ -176,7 +265,7 @@ export const removeFromWishlistController = async (req, res) => {
       message: 'Product removed from wishlist.',
     });
   } catch (error) {
-    console.error('Remove wishlist error:', error);
+    console.error('Remove wishlist server error:', error);
 
     return res.status(500).json({
       success: false,

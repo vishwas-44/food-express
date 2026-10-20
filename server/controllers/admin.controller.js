@@ -1,3 +1,4 @@
+
 import supabase from '../config/supabase.js';
 import bcryptjs from 'bcryptjs';
 import jwt from 'jsonwebtoken';
@@ -69,9 +70,7 @@ export const adminLoginController = async (req, res) => {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite:
-        process.env.NODE_ENV === 'production'
-          ? 'none'
-          : 'lax',
+        process.env.NODE_ENV === 'production' ? 'none' : 'lax',
       maxAge: 5 * 60 * 60 * 1000,
     };
 
@@ -107,10 +106,7 @@ export const adminLoginController = async (req, res) => {
 =====================================================
 */
 
-export const createCategoryController = async (
-  req,
-  res
-) => {
+export const createCategoryController = async (req, res) => {
   try {
     const { name, image } = req.body;
 
@@ -132,9 +128,7 @@ export const createCategoryController = async (
       .eq('name', categoryName)
       .maybeSingle();
 
-    if (existingError) {
-      throw existingError;
-    }
+    if (existingError) throw existingError;
 
     if (existingCategory) {
       return res.status(400).json({
@@ -155,9 +149,7 @@ export const createCategoryController = async (
       .select('*')
       .single();
 
-    if (insertError) {
-      throw insertError;
-    }
+    if (insertError) throw insertError;
 
     return res.status(201).json({
       message: 'Category created successfully',
@@ -169,7 +161,7 @@ export const createCategoryController = async (
     console.error('Create category error:', error);
 
     return res.status(500).json({
-      message: error.message || error,
+      message: error.message || 'Failed to create category',
       error: true,
     });
   }
@@ -181,10 +173,7 @@ export const createCategoryController = async (
 =====================================================
 */
 
-export const getAllCategoriesController = async (
-  req,
-  res
-) => {
+export const getAllCategoriesController = async (req, res) => {
   try {
     const {
       data: categories,
@@ -197,9 +186,7 @@ export const getAllCategoriesController = async (
         ascending: true,
       });
 
-    if (categoriesError) {
-      throw categoriesError;
-    }
+    if (categoriesError) throw categoriesError;
 
     return res.status(200).json({
       message: 'Categories fetched successfully',
@@ -211,9 +198,7 @@ export const getAllCategoriesController = async (
     console.error('Get categories error:', error);
 
     return res.status(500).json({
-      message:
-        error.message ||
-        'Failed to fetch categories',
+      message: error.message || 'Failed to fetch categories',
       error: true,
     });
   }
@@ -225,10 +210,7 @@ export const getAllCategoriesController = async (
 =====================================================
 */
 
-export const updateCategoryController = async (
-  req,
-  res
-) => {
+export const updateCategoryController = async (req, res) => {
   try {
     const { categoryId } = req.params;
     const { name, image } = req.body;
@@ -249,7 +231,6 @@ export const updateCategoryController = async (
 
     const categoryName = name.trim();
 
-    // Check whether the category exists.
     const {
       data: existingCategory,
       error: findError,
@@ -260,9 +241,7 @@ export const updateCategoryController = async (
       .eq('status', 'Active')
       .maybeSingle();
 
-    if (findError) {
-      throw findError;
-    }
+    if (findError) throw findError;
 
     if (!existingCategory) {
       return res.status(404).json({
@@ -271,7 +250,6 @@ export const updateCategoryController = async (
       });
     }
 
-    // Check for duplicate category names.
     const {
       data: duplicateCategory,
       error: duplicateError,
@@ -282,19 +260,15 @@ export const updateCategoryController = async (
       .neq('id', categoryId)
       .maybeSingle();
 
-    if (duplicateError) {
-      throw duplicateError;
-    }
+    if (duplicateError) throw duplicateError;
 
     if (duplicateCategory) {
       return res.status(400).json({
-        message:
-          'Another category with this name already exists',
+        message: 'Another category with this name already exists',
         error: true,
       });
     }
 
-    // Update category.
     const {
       data: updatedCategory,
       error: updateError,
@@ -309,9 +283,7 @@ export const updateCategoryController = async (
       .select('*')
       .single();
 
-    if (updateError) {
-      throw updateError;
-    }
+    if (updateError) throw updateError;
 
     return res.status(200).json({
       message: 'Category updated successfully',
@@ -323,9 +295,7 @@ export const updateCategoryController = async (
     console.error('Update category error:', error);
 
     return res.status(500).json({
-      message:
-        error.message ||
-        'Failed to update category',
+      message: error.message || 'Failed to update category',
       error: true,
     });
   }
@@ -337,10 +307,7 @@ export const updateCategoryController = async (
 =====================================================
 */
 
-export const deleteCategoryController = async (
-  req,
-  res
-) => {
+export const deleteCategoryController = async (req, res) => {
   try {
     const { categoryId } = req.params;
 
@@ -351,7 +318,6 @@ export const deleteCategoryController = async (
       });
     }
 
-    // Check whether the category exists.
     const {
       data: existingCategory,
       error: findError,
@@ -362,9 +328,7 @@ export const deleteCategoryController = async (
       .eq('status', 'Active')
       .maybeSingle();
 
-    if (findError) {
-      throw findError;
-    }
+    if (findError) throw findError;
 
     if (!existingCategory) {
       return res.status(404).json({
@@ -373,7 +337,6 @@ export const deleteCategoryController = async (
       });
     }
 
-    // Soft delete: mark the category as Inactive.
     const {
       data: deletedCategory,
       error: deleteError,
@@ -387,9 +350,7 @@ export const deleteCategoryController = async (
       .select('*')
       .single();
 
-    if (deleteError) {
-      throw deleteError;
-    }
+    if (deleteError) throw deleteError;
 
     return res.status(200).json({
       message: 'Category deleted successfully',
@@ -401,9 +362,7 @@ export const deleteCategoryController = async (
     console.error('Delete category error:', error);
 
     return res.status(500).json({
-      message:
-        error.message ||
-        'Failed to delete category',
+      message: error.message || 'Failed to delete category',
       error: true,
     });
   }
@@ -415,10 +374,7 @@ export const deleteCategoryController = async (
 =====================================================
 */
 
-export const createProductController = async (
-  req,
-  res
-) => {
+export const createProductController = async (req, res) => {
   try {
     const {
       title,
@@ -436,8 +392,7 @@ export const createProductController = async (
       !description
     ) {
       return res.status(400).json({
-        message:
-          'Please provide all required product fields',
+        message: 'Please provide all required product fields',
         error: true,
       });
     }
@@ -461,9 +416,7 @@ export const createProductController = async (
       .select('*')
       .single();
 
-    if (insertError) {
-      throw insertError;
-    }
+    if (insertError) throw insertError;
 
     return res.status(201).json({
       message: 'Product created successfully',
@@ -475,7 +428,7 @@ export const createProductController = async (
     console.error('Create product error:', error);
 
     return res.status(500).json({
-      message: error.message || error,
+      message: error.message || 'Failed to create product',
       error: true,
     });
   }
@@ -487,10 +440,7 @@ export const createProductController = async (
 =====================================================
 */
 
-export const getAllProductsController = async (
-  req,
-  res
-) => {
+export const getAllProductsController = async (req, res) => {
   try {
     const {
       data: products,
@@ -503,9 +453,7 @@ export const getAllProductsController = async (
         ascending: false,
       });
 
-    if (productsError) {
-      throw productsError;
-    }
+    if (productsError) throw productsError;
 
     return res.status(200).json({
       message: 'Products fetched successfully',
@@ -517,9 +465,7 @@ export const getAllProductsController = async (
     console.error('Get products error:', error);
 
     return res.status(500).json({
-      message:
-        error.message ||
-        'Failed to fetch products',
+      message: error.message || 'Failed to fetch products',
       error: true,
     });
   }
@@ -531,10 +477,7 @@ export const getAllProductsController = async (
 =====================================================
 */
 
-export const updateProductController = async (
-  req,
-  res
-) => {
+export const updateProductController = async (req, res) => {
   try {
     const { productId } = req.params;
 
@@ -561,8 +504,7 @@ export const updateProductController = async (
       !description
     ) {
       return res.status(400).json({
-        message:
-          'Please provide all required product fields',
+        message: 'Please provide all required product fields',
         error: true,
       });
     }
@@ -577,9 +519,7 @@ export const updateProductController = async (
       .eq('status', 'Active')
       .maybeSingle();
 
-    if (findError) {
-      throw findError;
-    }
+    if (findError) throw findError;
 
     if (!existingProduct) {
       return res.status(404).json({
@@ -609,9 +549,7 @@ export const updateProductController = async (
       .select('*')
       .single();
 
-    if (updateError) {
-      throw updateError;
-    }
+    if (updateError) throw updateError;
 
     return res.status(200).json({
       message: 'Product updated successfully',
@@ -623,9 +561,7 @@ export const updateProductController = async (
     console.error('Update product error:', error);
 
     return res.status(500).json({
-      message:
-        error.message ||
-        'Failed to update product',
+      message: error.message || 'Failed to update product',
       error: true,
     });
   }
@@ -637,10 +573,7 @@ export const updateProductController = async (
 =====================================================
 */
 
-export const deleteProductController = async (
-  req,
-  res
-) => {
+export const deleteProductController = async (req, res) => {
   try {
     const { productId } = req.params;
 
@@ -661,9 +594,7 @@ export const deleteProductController = async (
       .eq('status', 'Active')
       .maybeSingle();
 
-    if (findError) {
-      throw findError;
-    }
+    if (findError) throw findError;
 
     if (!existingProduct) {
       return res.status(404).json({
@@ -672,7 +603,6 @@ export const deleteProductController = async (
       });
     }
 
-    // Soft delete: mark the product as Inactive.
     const {
       data: deletedProduct,
       error: deleteError,
@@ -686,9 +616,7 @@ export const deleteProductController = async (
       .select('*')
       .single();
 
-    if (deleteError) {
-      throw deleteError;
-    }
+    if (deleteError) throw deleteError;
 
     return res.status(200).json({
       message: 'Product deleted successfully',
@@ -700,9 +628,7 @@ export const deleteProductController = async (
     console.error('Delete product error:', error);
 
     return res.status(500).json({
-      message:
-        error.message ||
-        'Failed to delete product',
+      message: error.message || 'Failed to delete product',
       error: true,
     });
   }
@@ -726,9 +652,7 @@ export const getAllOrdersController = async (req, res) => {
         ascending: false,
       });
 
-    if (ordersError) {
-      throw ordersError;
-    }
+    if (ordersError) throw ordersError;
 
     // Add customer details and order status history.
     const ordersWithDetails = await Promise.all(
@@ -743,10 +667,7 @@ export const getAllOrdersController = async (req, res) => {
           .maybeSingle();
 
         if (userError) {
-          console.error(
-            'Get order user error:',
-            userError
-          );
+          console.error('Get order user error:', userError);
         }
 
         const {
@@ -785,17 +706,11 @@ export const getAllOrdersController = async (req, res) => {
     console.error('Get all orders error:', error);
 
     return res.status(500).json({
-      message: error.message || error,
+      message: error.message || 'Failed to fetch orders',
       error: true,
     });
   }
 };
-
-/*
-=====================================================
-  Update Order Status
-=====================================================
-*/
 
 /*
 =====================================================
@@ -838,7 +753,6 @@ export const updateOrderStatusController = async (req, res) => {
       });
     }
 
-    // Get the existing order and customer ID.
     const {
       data: existingOrder,
       error: findError,
@@ -848,9 +762,7 @@ export const updateOrderStatusController = async (req, res) => {
       .eq('id', orderId)
       .maybeSingle();
 
-    if (findError) {
-      throw findError;
-    }
+    if (findError) throw findError;
 
     if (!existingOrder) {
       return res.status(404).json({
@@ -859,7 +771,6 @@ export const updateOrderStatusController = async (req, res) => {
       });
     }
 
-    // Prevent changes after delivery.
     if (existingOrder.order_status === 'Delivered') {
       return res.status(400).json({
         message: 'Delivered orders cannot be changed.',
@@ -867,7 +778,6 @@ export const updateOrderStatusController = async (req, res) => {
       });
     }
 
-    // Prevent changes after cancellation.
     if (existingOrder.order_status === 'Cancelled') {
       return res.status(400).json({
         message: 'Cancelled orders cannot be changed.',
@@ -875,7 +785,6 @@ export const updateOrderStatusController = async (req, res) => {
       });
     }
 
-    // Prevent duplicate status updates.
     if (existingOrder.order_status === order_status) {
       return res.status(400).json({
         message: 'Order is already in this status.',
@@ -883,7 +792,6 @@ export const updateOrderStatusController = async (req, res) => {
       });
     }
 
-    // Update the order status.
     const {
       data: updatedOrder,
       error: updateError,
@@ -897,14 +805,10 @@ export const updateOrderStatusController = async (req, res) => {
       .select('*')
       .single();
 
-    if (updateError) {
-      throw updateError;
-    }
+    if (updateError) throw updateError;
 
-    // Save the status change in order history.
-    const {
-      error: historyError,
-    } = await supabase
+    // Record the order status change.
+    const { error: historyError } = await supabase
       .from('order_status_history')
       .insert({
         order_id: orderId,
@@ -912,42 +816,33 @@ export const updateOrderStatusController = async (req, res) => {
       });
 
     if (historyError) {
-      console.error(
-        'Order status history error:',
-        historyError
-      );
+      console.error('Order status history error:', historyError);
     }
 
-    // Notification messages for each order status.
     const statusMessages = {
       Confirmed: {
         title: 'Order Confirmed',
         message:
           'Your order has been confirmed and is being prepared.',
       },
-
       Preparing: {
         title: 'Order Being Prepared',
         message:
           'Our kitchen is preparing your order with care.',
       },
-
       'Out for Delivery': {
         title: 'Out for Delivery',
         message:
           'Your order is on its way! Please be ready to receive it.',
       },
-
       Delivered: {
         title: 'Order Delivered',
         message:
           'Your order has been delivered successfully. Enjoy your meal!',
       },
-
       Cancelled: {
         title: 'Order Cancelled',
-        message:
-          'Your order has been cancelled.',
+        message: 'Your order has been cancelled.',
       },
     };
 
@@ -957,11 +852,8 @@ export const updateOrderStatusController = async (req, res) => {
         message: `Your order status has changed to ${updatedOrder.order_status}.`,
       };
 
-    // Create a customer notification.
-    // Notification failure must not undo the order update.
-    const {
-      error: notificationError,
-    } = await supabase
+    // A notification failure should not undo the order update.
+    const { error: notificationError } = await supabase
       .from('notifications')
       .insert({
         recipient_type: 'customer',
@@ -986,16 +878,297 @@ export const updateOrderStatusController = async (req, res) => {
       data: updatedOrder,
     });
   } catch (error) {
-    console.error(
-      'Update order status error:',
-      error
-    );
+    console.error('Update order status error:', error);
 
     return res.status(500).json({
-      message:
-        error.message ||
-        'Failed to update order status',
+      message: error.message || 'Failed to update order status',
       error: true,
+    });
+  }
+};
+
+/*
+=====================================================
+  Admin Dashboard Analytics
+=====================================================
+*/
+
+export const getAdminAnalyticsController = async (req, res) => {
+  try {
+    const { data: orders, error } = await supabase
+      .from('orders')
+      .select(
+        'id, user_id, total_amount, order_status, payment_status, created_at'
+      )
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+
+    const allOrders = orders || [];
+    const now = new Date();
+
+    const normalize = (value) =>
+      String(value || '')
+        .trim()
+        .toLowerCase()
+        .replace(/[_-]/g, ' ');
+
+    const isCancelled = (order) =>
+      normalize(order.order_status) === 'cancelled';
+
+    const revenueOrders = allOrders.filter(
+      (order) => !isCancelled(order)
+    );
+
+    const calculateRevenue = (list) =>
+      list.reduce(
+        (sum, order) => sum + (Number(order.total_amount) || 0),
+        0
+      );
+
+    const isWithin = (order, start, end = now) => {
+      const createdAt = new Date(order.created_at);
+
+      return (
+        !Number.isNaN(createdAt.getTime()) &&
+        createdAt >= start &&
+        createdAt <= end
+      );
+    };
+
+    // Date ranges use UTC boundaries.
+    const todayStart = new Date(
+      Date.UTC(
+        now.getUTCFullYear(),
+        now.getUTCMonth(),
+        now.getUTCDate()
+      )
+    );
+
+    const weekStart = new Date(todayStart);
+    weekStart.setUTCDate(weekStart.getUTCDate() - 6);
+
+    const monthStart = new Date(
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)
+    );
+
+    const todayOrders = allOrders.filter((order) =>
+      isWithin(order, todayStart)
+    );
+
+    const weeklyOrders = allOrders.filter((order) =>
+      isWithin(order, weekStart)
+    );
+
+    const monthlyOrders = allOrders.filter((order) =>
+      isWithin(order, monthStart)
+    );
+
+    const todayRevenue = calculateRevenue(
+      todayOrders.filter((order) => !isCancelled(order))
+    );
+
+    const weeklyRevenue = calculateRevenue(
+      weeklyOrders.filter((order) => !isCancelled(order))
+    );
+
+    const monthlyRevenue = calculateRevenue(
+      monthlyOrders.filter((order) => !isCancelled(order))
+    );
+
+    // Order status totals.
+    const statusCounts = {
+      processing: 0,
+      confirmed: 0,
+      preparing: 0,
+      outForDelivery: 0,
+      delivered: 0,
+      cancelled: 0,
+      other: 0,
+    };
+
+    allOrders.forEach((order) => {
+      const status = normalize(order.order_status);
+
+      if (status === 'processing') {
+        statusCounts.processing++;
+      } else if (status === 'confirmed') {
+        statusCounts.confirmed++;
+      } else if (status === 'preparing' || status === 'prepared') {
+        statusCounts.preparing++;
+      } else if (
+        status === 'out for delivery' ||
+        status === 'shipped'
+      ) {
+        statusCounts.outForDelivery++;
+      } else if (status === 'delivered' || status === 'completed') {
+        statusCounts.delivered++;
+      } else if (status === 'cancelled') {
+        statusCounts.cancelled++;
+      } else {
+        statusCounts.other++;
+      }
+    });
+
+    // Payment method analytics.
+    // payment_status is treated as the stored payment-method value.
+    // It does not independently confirm that payment was collected.
+    const paymentAnalytics = {
+      cod: {
+        label: 'Cash on Delivery',
+        orders: 0,
+        percentage: 0,
+        cancelledOrders: 0,
+        orderValue: 0,
+        cancelledValue: 0,
+      },
+      online: {
+        label: 'Online Payments',
+        orders: 0,
+        percentage: 0,
+        cancelledOrders: 0,
+        orderValue: 0,
+        cancelledValue: 0,
+      },
+      other: {
+        label: 'Other / Unknown',
+        orders: 0,
+        percentage: 0,
+        cancelledOrders: 0,
+        orderValue: 0,
+        cancelledValue: 0,
+      },
+    };
+
+    allOrders.forEach((order) => {
+      const paymentMethod = normalize(order.payment_status);
+      let methodKey = 'other';
+
+      if (
+        paymentMethod === 'cod' ||
+        paymentMethod.includes('cash on delivery')
+      ) {
+        methodKey = 'cod';
+      } else if (
+        paymentMethod.includes('online') ||
+        paymentMethod.includes('razorpay') ||
+        paymentMethod.includes('upi') ||
+        paymentMethod.includes('credit card') ||
+        paymentMethod.includes('debit card') ||
+        paymentMethod.includes('net banking') ||
+        paymentMethod.includes('paypal') ||
+        paymentMethod.includes('stripe') ||
+        paymentMethod.includes('wallet') ||
+        paymentMethod.includes('google pay') ||
+        paymentMethod.includes('phonepe') ||
+        paymentMethod.includes('paytm')
+      ) {
+        methodKey = 'online';
+      }
+
+      const group = paymentAnalytics[methodKey];
+      const amount = Number(order.total_amount) || 0;
+
+      group.orders++;
+
+      if (isCancelled(order)) {
+        group.cancelledOrders++;
+        group.cancelledValue += amount;
+      } else {
+        group.orderValue += amount;
+      }
+    });
+
+    const totalOrders = allOrders.length;
+
+    Object.values(paymentAnalytics).forEach((group) => {
+      group.percentage =
+        totalOrders > 0
+          ? Number(((group.orders / totalOrders) * 100).toFixed(1))
+          : 0;
+
+      group.orderValue = Number(group.orderValue.toFixed(2));
+      group.cancelledValue = Number(group.cancelledValue.toFixed(2));
+    });
+
+    // Seven-day sales chart.
+    const salesTrend = [];
+
+    for (let i = 6; i >= 0; i--) {
+      const dayStart = new Date(todayStart);
+      dayStart.setUTCDate(dayStart.getUTCDate() - i);
+
+      const nextDay = new Date(dayStart);
+      nextDay.setUTCDate(nextDay.getUTCDate() + 1);
+
+      const dayOrders = revenueOrders.filter((order) => {
+        const createdAt = new Date(order.created_at);
+
+        return (
+          !Number.isNaN(createdAt.getTime()) &&
+          createdAt >= dayStart &&
+          createdAt < nextDay
+        );
+      });
+
+      salesTrend.push({
+        date: dayStart.toISOString().slice(0, 10),
+        label: dayStart.toLocaleDateString('en-IN', {
+          timeZone: 'UTC',
+          day: '2-digit',
+          month: 'short',
+        }),
+        orders: dayOrders.length,
+        revenue: Number(calculateRevenue(dayOrders).toFixed(2)),
+      });
+    }
+
+    const recentOrders = allOrders.slice(0, 5);
+
+    return res.status(200).json({
+      success: true,
+      error: false,
+      message: 'Admin analytics fetched successfully',
+      data: {
+        overview: {
+          totalOrders: allOrders.length,
+          todayOrders: todayOrders.length,
+          pendingOrders:
+            statusCounts.processing +
+            statusCounts.confirmed +
+            statusCounts.preparing +
+            statusCounts.outForDelivery,
+          deliveredOrders: statusCounts.delivered,
+          cancelledOrders: statusCounts.cancelled,
+        },
+
+        revenue: {
+          today: Number(todayRevenue.toFixed(2)),
+          week: Number(weeklyRevenue.toFixed(2)),
+          month: Number(monthlyRevenue.toFixed(2)),
+          total: Number(calculateRevenue(revenueOrders).toFixed(2)),
+        },
+
+        paymentAnalytics: {
+          ...paymentAnalytics,
+          totalOrders,
+          totalOrderValue: Number(
+            calculateRevenue(revenueOrders).toFixed(2)
+          ),
+        },
+
+        statusCounts,
+        salesTrend,
+        recentOrders,
+      },
+    });
+  } catch (error) {
+    console.error('Admin analytics error:', error);
+
+    return res.status(500).json({
+      success: false,
+      error: true,
+      message: 'Failed to fetch admin analytics',
     });
   }
 };

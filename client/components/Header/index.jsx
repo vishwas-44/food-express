@@ -33,6 +33,7 @@ export default function Header() {
   const [isSticky, setIsSticky] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
+
   const [cartCount, setCartCount] = useState(0);
   const [wishlistCount, setWishlistCount] = useState(0);
 
@@ -49,10 +50,11 @@ export default function Header() {
   const router = useRouter();
 
   const isLoggedIn = context?.isLoggedIn || false;
+  const authLoading = context?.authLoading ?? false;
   const userDetails = context?.userDetails || null;
   const isAdmin = userDetails?.role === 'Admin';
 
-  // Update cart count
+  // Update cart count from local storage.
   const updateCartCount = useCallback(() => {
     try {
       const savedCart = JSON.parse(
@@ -71,9 +73,11 @@ export default function Header() {
     }
   }, []);
 
-  // Update wishlist count
+  // Update wishlist count.
+  // Do not call the protected endpoint while auth is loading
+  // or when the user is logged out.
   const updateWishlistCount = useCallback(async () => {
-    if (!isLoggedIn) {
+    if (authLoading || !isLoggedIn) {
       setWishlistCount(0);
       return;
     }
@@ -85,6 +89,11 @@ export default function Header() {
         cache: 'no-store',
       });
 
+      if (response.status === 401) {
+        setWishlistCount(0);
+        return;
+      }
+
       if (!response.ok) {
         console.error(
           'Failed to load wishlist count:',
@@ -95,20 +104,21 @@ export default function Header() {
 
       const result = await response.json();
 
-      if (Array.isArray(result.data)) {
+      if (result.success && Array.isArray(result.data)) {
         setWishlistCount(result.data.length);
       }
     } catch (error) {
       console.error('Error reading wishlist:', error);
     }
-  }, [isLoggedIn]);
+  }, [authLoading, isLoggedIn]);
 
-  // Fetch notifications
+  // Fetch notifications for the current authenticated user.
   const updateNotifications = useCallback(async () => {
-    if (!isLoggedIn) {
+    if (authLoading || !isLoggedIn) {
       setNotifications([]);
       setUnreadCount(0);
       setNotificationError('');
+      setIsRefreshingNotifications(false);
       return;
     }
 
@@ -126,6 +136,13 @@ export default function Header() {
       });
 
       const result = await response.json();
+
+      if (response.status === 401) {
+        setNotifications([]);
+        setUnreadCount(0);
+        setNotificationError('Your session may have expired. Please log in again.');
+        return;
+      }
 
       if (!response.ok) {
         throw new Error(
@@ -148,10 +165,14 @@ export default function Header() {
     } finally {
       setIsRefreshingNotifications(false);
     }
-  }, [isLoggedIn, isAdmin]);
+  }, [authLoading, isLoggedIn, isAdmin]);
 
-  // Mark a notification as read
+  // Mark a notification as read.
   const markNotificationAsRead = async (notificationId) => {
+    if (authLoading || !isLoggedIn) {
+      return;
+    }
+
     try {
       const endpoint = isAdmin
         ? `${API_URL}/admin/notifications/${notificationId}/read`
@@ -188,12 +209,13 @@ export default function Header() {
     }
   };
 
-  // Load notifications initially and refresh every 10 seconds
+  // Load notifications and refresh every 10 seconds.
   useEffect(() => {
-    if (!isLoggedIn) {
+    if (authLoading || !isLoggedIn) {
       setNotifications([]);
       setUnreadCount(0);
       setIsNotificationsOpen(false);
+      setNotificationError('');
       return;
     }
 
@@ -204,9 +226,9 @@ export default function Header() {
     }, 10000);
 
     return () => clearInterval(interval);
-  }, [isLoggedIn, updateNotifications]);
+  }, [authLoading, isLoggedIn, updateNotifications]);
 
-  // Close notification dropdown when clicking outside it
+  // Close notification dropdown when clicking outside.
   useEffect(() => {
     const handleOutsideClick = (event) => {
       if (
@@ -226,7 +248,7 @@ export default function Header() {
     };
   }, []);
 
-  // Load cart and wishlist counts and listen for changes
+  // Load cart and wishlist counts and listen for changes.
   useEffect(() => {
     updateCartCount();
     updateWishlistCount();
@@ -259,12 +281,14 @@ export default function Header() {
     };
   }, [updateCartCount, updateWishlistCount]);
 
-  // Refresh wishlist when login state changes
+  // Refresh wishlist when authentication state changes.
   useEffect(() => {
-    updateWishlistCount();
-  }, [updateWishlistCount]);
+    if (!authLoading) {
+      updateWishlistCount();
+    }
+  }, [authLoading, updateWishlistCount]);
 
-  // Sticky header
+  // Sticky header.
   useEffect(() => {
     const handleScroll = () => {
       setIsSticky(window.scrollY > 80);
@@ -277,7 +301,7 @@ export default function Header() {
     };
   }, []);
 
-  // Logout
+  // Logout.
   const handleLogout = async () => {
     try {
       const response = await fetch(`${API_URL}/user/logout`, {
@@ -286,7 +310,7 @@ export default function Header() {
       });
 
       if (!response.ok) {
-        console.error('Logout failed.');
+        console.error('Logout failed:', response.status);
       }
     } catch (error) {
       console.error('Logout request error:', error);
@@ -297,6 +321,7 @@ export default function Header() {
       setWishlistCount(0);
       setNotifications([]);
       setUnreadCount(0);
+      setNotificationError('');
       setIsNotificationsOpen(false);
       setIsProfileOpen(false);
       setIsMobileMenuOpen(false);
@@ -360,18 +385,10 @@ export default function Header() {
           className="d-none d-md-flex"
           style={{ alignItems: 'center', gap: '25px' }}
         >
-          <Link href="/" style={linkStyle}>
-            Home
-          </Link>
-          <Link href="/menu" style={linkStyle}>
-            Menu
-          </Link>
-          <Link href="/categories" style={linkStyle}>
-            Categories
-          </Link>
-          <Link href="/about" style={linkStyle}>
-            About Us
-          </Link>
+          <Link href="/" style={linkStyle}>Home</Link>
+          <Link href="/menu" style={linkStyle}>Menu</Link>
+          <Link href="/categories" style={linkStyle}>Categories</Link>
+          <Link href="/about" style={linkStyle}>About Us</Link>
         </nav>
 
         <div
@@ -382,7 +399,7 @@ export default function Header() {
           }}
         >
           {/* Notifications */}
-          {isLoggedIn && (
+          {isLoggedIn && !authLoading && (
             <div
               ref={notificationRef}
               style={{ position: 'relative' }}
@@ -538,6 +555,7 @@ export default function Header() {
                   )}
 
                   {!notificationError &&
+                    !isRefreshingNotifications &&
                     notifications.length === 0 && (
                       <p
                         style={{

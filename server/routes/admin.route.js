@@ -19,6 +19,7 @@ import {
 
   getAllOrdersController,
   updateOrderStatusController,
+  getAdminAnalyticsController,
 } from '../controllers/admin.controller.js';
 
 import {
@@ -204,6 +205,19 @@ adminRouter.delete(
   auth,
   admin,
   deleteAdminCouponController
+);
+
+/*
+=====================================================
+  Admin Dashboard Analytics
+=====================================================
+*/
+
+adminRouter.get(
+  '/analytics',
+  auth,
+  admin,
+  getAdminAnalyticsController
 );
 
 // ============================================

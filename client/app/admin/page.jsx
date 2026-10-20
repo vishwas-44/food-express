@@ -1,8 +1,8 @@
+
 'use client';
 
 import { useContext, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-
 import { MyContext } from '../../context/ThemeContext';
 
 import {
@@ -18,7 +18,11 @@ import {
   MdCancel,
   MdCurrencyRupee,
   MdLocalOffer,
+  MdPayments,
+  MdRefresh,
 } from 'react-icons/md';
+
+const API_BASE = 'http://localhost:8000/api/admin';
 
 export default function AdminDashboard() {
   const context = useContext(MyContext);
@@ -27,842 +31,935 @@ export default function AdminDashboard() {
   const [checkingAccess, setCheckingAccess] = useState(true);
   const [accessDenied, setAccessDenied] = useState(false);
   const [orders, setOrders] = useState([]);
-  const [loadingOrders, setLoadingOrders] = useState(true);
+  const [analytics, setAnalytics] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
 
-  /*
-    Check admin access
-  */
   useEffect(() => {
-    if (!context?.isLoggedIn) {
+    if (!context?.isLoggedIn || user?.role !== 'Admin') {
       setAccessDenied(true);
-      setCheckingAccess(false);
-      return;
+    } else {
+      setAccessDenied(false);
     }
 
-    if (user?.role !== 'Admin') {
-      setAccessDenied(true);
-      setCheckingAccess(false);
-      return;
-    }
-
-    setAccessDenied(false);
     setCheckingAccess(false);
   }, [context?.isLoggedIn, user]);
 
-  /*
-    Fetch orders
-  */
-  useEffect(() => {
-    if (checkingAccess || accessDenied) {
-      return;
-    }
+  const fetchDashboard = async (manual = false) => {
+    if (manual) setRefreshing(true);
 
-    let isMounted = true;
+    try {
+      const [ordersResponse, analyticsResponse] = await Promise.all([
+        fetch(`${API_BASE}/all-orders`, {
+          credentials: 'include',
+        }),
+        fetch(`${API_BASE}/analytics`, {
+          credentials: 'include',
+        }),
+      ]);
 
-    const fetchOrders = async () => {
-      try {
-        const response = await fetch(
-          'http://localhost:8000/api/admin/all-orders',
-          {
-            method: 'GET',
-            credentials: 'include',
-          }
+      const [ordersResult, analyticsResult] = await Promise.all([
+        ordersResponse.json(),
+        analyticsResponse.json(),
+      ]);
+
+      if (!ordersResponse.ok) {
+        throw new Error(
+          ordersResult.message || 'Failed to fetch orders.'
         );
-
-        const data = await response.json();
-
-        if (!response.ok) {
-          if (isMounted) {
-            setError(data.message || 'Failed to fetch orders.');
-          }
-          return;
-        }
-
-        if (isMounted) {
-          setOrders(data.data || []);
-          setError('');
-        }
-      } catch (error) {
-        console.error('Dashboard orders error:', error);
-
-        if (isMounted) {
-          setError('Unable to connect to the server.');
-        }
-      } finally {
-        if (isMounted) {
-          setLoadingOrders(false);
-        }
       }
-    };
 
-    fetchOrders();
+      if (!analyticsResponse.ok) {
+        throw new Error(
+          analyticsResult.message || 'Failed to fetch analytics.'
+        );
+      }
 
-    /*
-      Refresh dashboard every 5 seconds
-    */
-    const interval = setInterval(fetchOrders, 5000);
-
-    return () => {
-      isMounted = false;
-      clearInterval(interval);
-    };
-  }, [checkingAccess, accessDenied]);
-
-  /*
-    Date helpers
-  */
-  const getLocalDateKey = (date) => {
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
-
-    return `${year}-${month}-${day}`;
+      setOrders(ordersResult.data || []);
+      setAnalytics(analyticsResult.data || null);
+      setError('');
+    } catch (err) {
+      console.error('Admin dashboard error:', err);
+      setError(err.message || 'Unable to connect to the server.');
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
   };
 
-  const getDateKey = (dateString) => {
-    if (!dateString) {
-      return '';
-    }
+  useEffect(() => {
+    if (checkingAccess || accessDenied) return;
 
-    const date = new Date(dateString);
+    fetchDashboard();
 
-    if (Number.isNaN(date.getTime())) {
-      return '';
-    }
+    const interval = setInterval(() => {
+      fetchDashboard();
+    }, 10000);
 
-    return getLocalDateKey(date);
+    return () => clearInterval(interval);
+  }, [checkingAccess, accessDenied]);
+
+  const getStatus = (order) =>
+    String(order.order_status || '')
+      .trim()
+      .toLowerCase()
+      .replace(/[_-]/g, ' ');
+
+  const isCancelled = (order) => getStatus(order) === 'cancelled';
+
+  const getLocalDateKey = (date) => {
+    return [
+      date.getFullYear(),
+      String(date.getMonth() + 1).padStart(2, '0'),
+      String(date.getDate()).padStart(2, '0'),
+    ].join('-');
   };
 
   const todayKey = getLocalDateKey(new Date());
 
-  /*
-    Get start and end of current week
-  */
-  const getCurrentWeekRange = () => {
-    const today = new Date();
-    const day = today.getDay();
-    const mondayOffset = day === 0 ? -6 : 1 - day;
-
-    const start = new Date(today);
-
-    start.setDate(today.getDate() + mondayOffset);
-    start.setHours(0, 0, 0, 0);
-
-    const end = new Date(start);
-
-    end.setDate(start.getDate() + 6);
-    end.setHours(23, 59, 59, 999);
-
-    return { start, end };
-  };
-
-  /*
-    Get current month range
-  */
-  const getCurrentMonthRange = () => {
-    const today = new Date();
-
-    const start = new Date(
-      today.getFullYear(),
-      today.getMonth(),
-      1
-    );
-
-    start.setHours(0, 0, 0, 0);
-
-    const end = new Date(
-      today.getFullYear(),
-      today.getMonth() + 1,
-      0
-    );
-
-    end.setHours(23, 59, 59, 999);
-
-    return { start, end };
-  };
-
-  const isInsideRange = (dateString, start, end) => {
-    if (!dateString) {
-      return false;
-    }
-
-    const date = new Date(dateString);
-
-    if (Number.isNaN(date.getTime())) {
-      return false;
-    }
-
-    return date >= start && date <= end;
-  };
-
-  /*
-    Today's orders
-  */
-  const todayOrders = useMemo(() => {
-    return orders.filter(
-      (order) => getDateKey(order.created_at) === todayKey
-    );
-  }, [orders, todayKey]);
-
-  /*
-    Current week
-  */
-  const weekRange = useMemo(
-    () => getCurrentWeekRange(),
-    []
+  const todayOrders = useMemo(
+    () =>
+      orders.filter((order) => {
+        if (!order.created_at) return false;
+        return getLocalDateKey(new Date(order.created_at)) === todayKey;
+      }),
+    [orders, todayKey]
   );
 
-  const weekOrders = useMemo(() => {
-    return orders.filter((order) =>
-      isInsideRange(
-        order.created_at,
-        weekRange.start,
-        weekRange.end
-      )
-    );
-  }, [orders, weekRange]);
-
-  /*
-    Current month
-  */
-  const monthRange = useMemo(
-    () => getCurrentMonthRange(),
-    []
+  const processingToday = todayOrders.filter((order) =>
+    ['processing', 'confirmed'].includes(getStatus(order))
   );
 
-  const monthOrders = useMemo(() => {
-    return orders.filter((order) =>
-      isInsideRange(
-        order.created_at,
-        monthRange.start,
-        monthRange.end
-      )
-    );
-  }, [orders, monthRange]);
-
-  /*
-    Normalize status
-  */
-  const getStatus = (order) =>
-    String(order.order_status || '')
-      .trim()
-      .toLowerCase();
-
-  /*
-    Today's Processing
-  */
-  const processingToday = todayOrders.filter((order) => {
-    const status = getStatus(order);
-
-    return status === 'processing' || status === 'confirmed';
-  });
-
-  /*
-    Today's Preparing
-  */
-  const preparingToday = todayOrders.filter((order) => {
-    const status = getStatus(order);
-
-    return status === 'preparing' || status === 'prepared';
-  });
-
-  /*
-    Today's Out for Delivery
-  */
-  const outForDeliveryToday = todayOrders.filter((order) => {
-    const status = getStatus(order);
-
-    return (
-      status === 'out for delivery' ||
-      status === 'out_for_delivery' ||
-      status === 'shipped'
-    );
-  });
-
-  /*
-    Today's Delivered
-  */
-  const deliveredToday = todayOrders.filter((order) => {
-    const status = getStatus(order);
-
-    return status === 'delivered' || status === 'completed';
-  });
-
-  /*
-    Today's Cancelled
-  */
-  const cancelledToday = todayOrders.filter(
-    (order) => getStatus(order) === 'cancelled'
+  const preparingToday = todayOrders.filter((order) =>
+    ['preparing', 'prepared'].includes(getStatus(order))
   );
 
-  /*
-    Calculate sales
-  */
-  const calculateSales = (orderList) => {
-    return orderList.reduce((total, order) => {
-      const status = getStatus(order);
+  const deliveryToday = todayOrders.filter((order) =>
+    ['out for delivery', 'shipped'].includes(getStatus(order))
+  );
 
-      /*
-        Cancelled orders are not counted
-        as completed sales.
-      */
-      if (status === 'cancelled') {
-        return total;
-      }
+  const deliveredToday = todayOrders.filter((order) =>
+    ['delivered', 'completed'].includes(getStatus(order))
+  );
 
-      return total + Number(order.total_amount || 0);
-    }, 0);
-  };
+  const cancelledToday = todayOrders.filter(isCancelled);
 
-  const todaySales = calculateSales(todayOrders);
-  const weekSales = calculateSales(weekOrders);
-  const monthSales = calculateSales(monthOrders);
-
-  /*
-    Format money
-  */
   const formatMoney = (amount) =>
     `₹${Number(amount || 0).toLocaleString('en-IN', {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
     })}`;
 
-  /*
-    Checking access
-  */
+  const payment = analytics?.paymentAnalytics || {};
+  const cod = payment.cod || {};
+  const online = payment.online || {};
+  const other = payment.other || {};
+
+  const paymentGroups = [
+    {
+      key: 'cod',
+      label: 'Cash on Delivery',
+      data: cod,
+      color: '#e87520',
+      background: '#fff3e8',
+    },
+    {
+      key: 'online',
+      label: 'Online Payments',
+      data: online,
+      color: '#1976d2',
+      background: '#eaf3ff',
+    },
+    {
+      key: 'other',
+      label: 'Other / Unknown',
+      data: other,
+      color: '#757575',
+      background: '#f1f1f1',
+    },
+  ];
+
+  const maxPaymentOrders = Math.max(
+    Number(cod.orders || 0),
+    Number(online.orders || 0),
+    Number(other.orders || 0),
+    1
+  );
+
   if (checkingAccess) {
-    return (
-      <div>
-        <h1>Checking Admin Access...</h1>
-        <p style={{ color: '#666' }}>Please wait.</p>
-      </div>
-    );
+    return <p style={{ padding: 30 }}>Checking admin access...</p>;
   }
 
-  /*
-    Access denied
-  */
   if (accessDenied) {
     return (
-      <div
-        style={{
-          background: '#fff',
-          border: '1px solid #ddd',
-          borderRadius: '12px',
-          padding: '50px',
-          textAlign: 'center',
-        }}
-      >
+      <div style={styles.messageCard}>
         <h1>Access Denied</h1>
-
-        <p
-          style={{
-            color: '#666',
-            marginTop: '10px',
-          }}
-        >
-          Admin privileges are required to access this page.
-        </p>
-
-        <Link
-          href="/"
-          style={{
-            display: 'inline-block',
-            marginTop: '20px',
-            padding: '12px 25px',
-            background: '#ff5722',
-            color: '#fff',
-            borderRadius: '7px',
-            textDecoration: 'none',
-            fontWeight: 'bold',
-          }}
-        >
+        <p>Admin privileges are required to access this page.</p>
+        <Link href="/" style={styles.primaryLink}>
           Go Home
         </Link>
       </div>
     );
   }
 
-  /*
-    Dashboard
-  */
   return (
-    <div
-      style={{
-        maxWidth: '1400px',
-        margin: '0 auto',
-      }}
-    >
-      {/* Header */}
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'flex-start',
-          gap: '20px',
-          flexWrap: 'wrap',
-          marginBottom: '30px',
-        }}
-      >
+    <main style={styles.page}>
+      <header style={styles.header}>
         <div>
-          <h1 style={{ marginBottom: '8px' }}>
-            Admin Dashboard
-          </h1>
-
-          <p
-            style={{
-              color: '#666',
-              margin: 0,
-            }}
-          >
-            Overview of your food ordering business.
+          <h1 style={styles.pageTitle}>Admin Dashboard</h1>
+          <p style={styles.muted}>
+            Monitor orders, sales and payment methods.
           </p>
         </div>
 
-        <div
-          style={{
-            background: '#e8f5e9',
-            color: '#2e7d32',
-            border: '1px solid #a5d6a7',
-            borderRadius: '20px',
-            padding: '9px 16px',
-            fontSize: '13px',
-            fontWeight: '600',
-          }}
+        <button
+          type="button"
+          onClick={() => fetchDashboard(true)}
+          disabled={refreshing}
+          style={styles.refreshButton}
         >
-          ● Live Dashboard
-        </div>
-      </div>
+          <MdRefresh size={20} />
+          {refreshing ? 'Refreshing...' : 'Refresh'}
+        </button>
+      </header>
 
-      {/* Error */}
       {error && (
-        <div
-          style={{
-            background: '#ffebee',
-            color: '#c62828',
-            border: '1px solid #ef9a9a',
-            borderRadius: '8px',
-            padding: '12px 16px',
-            marginBottom: '20px',
-          }}
-        >
+        <div style={styles.error}>
           {error}
+          <button
+            onClick={() => fetchDashboard(true)}
+            style={styles.retryButton}
+          >
+            Try again
+          </button>
         </div>
       )}
 
-      {/* Today's Overview */}
-      <h2
-        style={{
-          marginBottom: '15px',
-          fontSize: '22px',
-        }}
-      >
-        Today&apos;s Overview
-      </h2>
+      {loading && !analytics ? (
+        <div style={styles.panel}>
+          Loading dashboard analytics...
+        </div>
+      ) : (
+        <>
+          {/* Business overview */}
+          <SectionTitle>Business Overview</SectionTitle>
 
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))',
-          gap: '15px',
-          marginBottom: '35px',
-        }}
-      >
-        {/* Total Orders */}
-        <DashboardCard
-          title="Today's Orders"
-          value={todayOrders.length}
-          description="Orders received today"
-          icon={MdShoppingBag}
-          iconBackground="#fff3e0"
-          iconColor="#ef6c00"
-        />
+          <div style={styles.grid}>
+            <StatCard
+              title="Total Orders"
+              value={analytics?.overview?.totalOrders ?? orders.length}
+              description="All recorded orders"
+              icon={MdShoppingBag}
+              color="#ef6c00"
+              background="#fff3e0"
+            />
+            <StatCard
+              title="Today's Orders"
+              value={analytics?.overview?.todayOrders ?? todayOrders.length}
+              description="Orders created today"
+              icon={MdPending}
+              color="#1565c0"
+              background="#e3f2fd"
+            />
+            <StatCard
+              title="Pending Orders"
+              value={analytics?.overview?.pendingOrders ?? 0}
+              description="Awaiting completion"
+              icon={MdRestaurant}
+              color="#8e5b00"
+              background="#fff8e1"
+            />
+            <StatCard
+              title="Delivered Orders"
+              value={analytics?.overview?.deliveredOrders ?? 0}
+              description="Successfully delivered"
+              icon={MdCheckCircle}
+              color="#2e7d32"
+              background="#e8f5e9"
+            />
+            <StatCard
+              title="Cancelled Orders"
+              value={analytics?.overview?.cancelledOrders ?? 0}
+              description="Cancelled orders"
+              icon={MdCancel}
+              color="#c62828"
+              background="#ffebee"
+            />
+          </div>
 
-        {/* Processing */}
-        <DashboardCard
-          title="Processing"
-          value={processingToday.length}
-          description="Processing / confirmed"
-          icon={MdPending}
-          iconBackground="#e3f2fd"
-          iconColor="#1565c0"
-        />
+          {/* Today's operations */}
+          <SectionTitle>Today's Operations</SectionTitle>
 
-        {/* Preparing */}
-        <DashboardCard
-          title="Preparing"
-          value={preparingToday.length}
-          description="Being prepared"
-          icon={MdRestaurant}
-          iconBackground="#fff8e1"
-          iconColor="#ef6c00"
-        />
+          <div style={styles.grid}>
+            <StatCard
+              title="Processing"
+              value={processingToday.length}
+              description="Processing or confirmed"
+              icon={MdPending}
+              color="#1565c0"
+              background="#e3f2fd"
+            />
+            <StatCard
+              title="Preparing"
+              value={preparingToday.length}
+              description="Being prepared"
+              icon={MdRestaurant}
+              color="#ef6c00"
+              background="#fff3e0"
+            />
+            <StatCard
+              title="Out for Delivery"
+              value={deliveryToday.length}
+              description="Orders on the way"
+              icon={MdDeliveryDining}
+              color="#6a1b9a"
+              background="#f3e5f5"
+            />
+            <StatCard
+              title="Delivered Today"
+              value={deliveredToday.length}
+              description="Completed today"
+              icon={MdCheckCircle}
+              color="#2e7d32"
+              background="#e8f5e9"
+            />
+            <StatCard
+              title="Cancelled Today"
+              value={cancelledToday.length}
+              description="Cancelled today"
+              icon={MdCancel}
+              color="#c62828"
+              background="#ffebee"
+            />
+          </div>
 
-        {/* Out for Delivery */}
-        <DashboardCard
-          title="Out for Delivery"
-          value={outForDeliveryToday.length}
-          description="Orders on the way"
-          icon={MdDeliveryDining}
-          iconBackground="#f3e5f5"
-          iconColor="#6a1b9a"
-        />
+          {/* Revenue */}
+          <SectionTitle>Sales Overview</SectionTitle>
 
-        {/* Delivered */}
-        <DashboardCard
-          title="Delivered"
-          value={deliveredToday.length}
-          description="Completed today"
-          icon={MdCheckCircle}
-          iconBackground="#e8f5e9"
-          iconColor="#2e7d32"
-        />
+          <div style={styles.grid}>
+            <MoneyCard
+              title="Today's Sales"
+              amount={analytics?.revenue?.today}
+              description="Non-cancelled orders created today"
+            />
+            <MoneyCard
+              title="Last 7 Days"
+              amount={analytics?.revenue?.week}
+              description="Non-cancelled orders over seven days"
+            />
+            <MoneyCard
+              title="This Month"
+              amount={analytics?.revenue?.month}
+              description="Non-cancelled orders this month"
+            />
+            <MoneyCard
+              title="Total Sales"
+              amount={analytics?.revenue?.total}
+              description="All non-cancelled orders"
+            />
+          </div>
 
-        {/* Cancelled */}
-        <DashboardCard
-          title="Cancelled"
-          value={cancelledToday.length}
-          description="Cancelled today"
-          icon={MdCancel}
-          iconBackground="#ffebee"
-          iconColor="#c62828"
-        />
-      </div>
+          {/* Payment analytics */}
+          <SectionTitle>Payment Analytics</SectionTitle>
 
-      {/* Sales Overview */}
-      <h2
-        style={{
-          marginBottom: '15px',
-          fontSize: '22px',
-        }}
-      >
-        Sales Overview
-      </h2>
+          <div style={styles.paymentGrid}>
+            {paymentGroups.map((group) => (
+              <div key={group.key} style={styles.paymentCard}>
+                <div style={styles.paymentCardTop}>
+                  <div
+                    style={{
+                      ...styles.paymentIcon,
+                      color: group.color,
+                      background: group.background,
+                    }}
+                  >
+                    <MdPayments size={27} />
+                  </div>
 
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
-          gap: '15px',
-          marginBottom: '35px',
-        }}
-      >
-        {/* Today */}
-        <SalesCard
-          title="Today's Sales"
-          amount={todaySales}
-          description="Sales generated today"
-        />
+                  <span
+                    style={{
+                      ...styles.percentageBadge,
+                      background: group.background,
+                      color: group.color,
+                    }}
+                  >
+                    {Number(group.data.percentage || 0).toFixed(1)}%
+                  </span>
+                </div>
 
-        {/* Week */}
-        <SalesCard
-          title="This Week"
-          amount={weekSales}
-          description={`${weekOrders.length} orders this week`}
-        />
+                <p style={styles.paymentLabel}>{group.label}</p>
+                <h3 style={styles.paymentCount}>
+                  {Number(group.data.orders || 0)}
+                  <span style={styles.smallText}> orders</span>
+                </h3>
 
-        {/* Month */}
-        <SalesCard
-          title="This Month"
-          amount={monthSales}
-          description={`${monthOrders.length} orders this month`}
-        />
-      </div>
+                <p style={styles.paymentValue}>
+                  {formatMoney(group.data.orderValue)}
+                </p>
 
-      {/* Quick Actions */}
-      <h2
-        style={{
-          marginBottom: '15px',
-          fontSize: '22px',
-        }}
-      >
-        Quick Actions
-      </h2>
+                <p style={styles.mutedSmall}>
+                  Non-cancelled order value
+                </p>
 
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-          gap: '15px',
-          marginBottom: '35px',
-        }}
-      >
-        {/* All Orders */}
-        <QuickAction
-          href="/admin/orders"
-          icon={MdListAlt}
-          title="All Orders"
-          description="Manage current customer orders"
-        />
+                <div style={styles.progressTrack}>
+                  <div
+                    style={{
+                      ...styles.progressBar,
+                      background: group.color,
+                      width: `${
+                        (Number(group.data.orders || 0) /
+                          maxPaymentOrders) *
+                        100
+                      }%`,
+                    }}
+                  />
+                </div>
 
-        {/* Order History */}
-        <QuickAction
-          href="/admin/order-history"
-          icon={MdHistory}
-          title="Order History"
-          description="View previous orders and statistics"
-        />
+                <div style={styles.cancelledRow}>
+                  <span>Cancelled orders</span>
+                  <strong>
+                    {Number(group.data.cancelledOrders || 0)}
+                  </strong>
+                </div>
 
-        {/* Add Product */}
-        <QuickAction
-          href="/admin/add-product"
-          icon={MdFastfood}
-          title="Add Product"
-          description="Add a new food item"
-        />
+                <div style={styles.cancelledRow}>
+                  <span>Cancelled value</span>
+                  <strong>
+                    {formatMoney(group.data.cancelledValue)}
+                  </strong>
+                </div>
+              </div>
+            ))}
+          </div>
 
-        {/* Add Category */}
-        <QuickAction
-          href="/admin/add-category"
-          icon={MdCategory}
-          title="Add Category"
-          description="Create a food category"
-        />
+          <div style={styles.panel}>
+            <h3 style={styles.panelTitle}>
+              COD vs Online — Order Count
+            </h3>
+            <p style={styles.mutedSmall}>
+              The bars compare the number of orders by the payment
+              method stored at checkout.
+            </p>
 
-        {/* Manage Coupons */}
-        <QuickAction
-          href="/admin/coupons"
-          icon={MdLocalOffer}
-          title="Manage Coupons"
-          description="Create discounts and manage promotional codes"
-        />
-      </div>
+            {paymentGroups.map((group) => (
+              <div key={group.key} style={styles.chartRow}>
+                <div style={styles.chartLabel}>
+                  <span>{group.label}</span>
+                  <strong>{Number(group.data.orders || 0)}</strong>
+                </div>
 
-      {/* Information */}
-      <div
-        style={{
-          background: '#fff',
-          border: '1px solid #ddd',
-          borderRadius: '12px',
-          padding: '22px',
-        }}
-      >
-        <h3
-          style={{
-            marginTop: 0,
-            marginBottom: '10px',
-          }}
-        >
-          Dashboard Information
-        </h3>
+                <div style={styles.progressTrack}>
+                  <div
+                    style={{
+                      ...styles.progressBar,
+                      background: group.color,
+                      width: `${
+                        (Number(group.data.orders || 0) /
+                          maxPaymentOrders) *
+                        100
+                      }%`,
+                    }}
+                  />
+                </div>
+              </div>
+            ))}
 
-        <p
-          style={{
-            color: '#666',
-            lineHeight: '1.7',
-            margin: 0,
-          }}
-        >
-          This dashboard updates automatically every 5 seconds.
-          Current orders are managed from All Orders, while
-          completed and cancelled orders can be reviewed in
-          Order History.
-        </p>
-      </div>
-    </div>
+            <div style={styles.paymentSummary}>
+              <div>
+                <span style={styles.mutedSmall}>Total orders</span>
+                <h3>{Number(payment.totalOrders ?? orders.length)}</h3>
+              </div>
+              <div>
+                <span style={styles.mutedSmall}>
+                  Non-cancelled order value
+                </span>
+                <h3>{formatMoney(payment.totalOrderValue)}</h3>
+              </div>
+            </div>
+
+            <p style={styles.note}>
+              Note: your current checkout saves the selected payment
+              method in the <code>payment_status</code> field.
+              These figures classify that stored value. They do not
+              verify whether money was actually collected or whether
+              an online transaction succeeded.
+            </p>
+          </div>
+
+          {/* Seven-day sales chart */}
+          <SectionTitle>Seven-Day Sales Trend</SectionTitle>
+
+          <div style={styles.panel}>
+            {analytics?.salesTrend?.length ? (
+              <div style={styles.salesChart}>
+                {analytics.salesTrend.map((day) => {
+                  const maxRevenue = Math.max(
+                    ...analytics.salesTrend.map(
+                      (item) => Number(item.revenue || 0)
+                    ),
+                    1
+                  );
+
+                  const height =
+                    (Number(day.revenue || 0) / maxRevenue) * 150;
+
+                  return (
+                    <div key={day.date} style={styles.salesBarColumn}>
+                      <span style={styles.barValue}>
+                        {formatMoney(day.revenue)}
+                      </span>
+
+                      <div style={styles.salesBarArea}>
+                        <div
+                          title={`${day.label}: ${formatMoney(day.revenue)}`}
+                          style={{
+                            ...styles.salesBar,
+                            height: `${Math.max(height, 3)}px`,
+                          }}
+                        />
+                      </div>
+
+                      <span style={styles.barLabel}>{day.label}</span>
+                      <span style={styles.mutedTiny}>
+                        {day.orders} orders
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <p style={styles.muted}>No sales trend data available.</p>
+            )}
+          </div>
+
+          {/* Recent orders */}
+          <SectionTitle>Recent Orders</SectionTitle>
+
+          <div style={styles.panel}>
+            {analytics?.recentOrders?.length ? (
+              <div style={styles.tableWrap}>
+                <table style={styles.table}>
+                  <thead>
+                    <tr>
+                      <th style={styles.th}>Order ID</th>
+                      <th style={styles.th}>Date</th>
+                      <th style={styles.th}>Amount</th>
+                      <th style={styles.th}>Payment Method</th>
+                      <th style={styles.th}>Order Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {analytics.recentOrders.map((order) => (
+                      <tr key={order.id}>
+                        <td style={styles.td}>
+                          {String(order.id).slice(0, 8)}...
+                        </td>
+                        <td style={styles.td}>
+                          {order.created_at
+                            ? new Date(order.created_at).toLocaleDateString(
+                                'en-IN'
+                              )
+                            : '—'}
+                        </td>
+                        <td style={styles.td}>
+                          {formatMoney(order.total_amount)}
+                        </td>
+                        <td style={styles.td}>
+                          {order.payment_status || 'Unknown'}
+                        </td>
+                        <td style={styles.td}>
+                          <span style={styles.statusPill}>
+                            {order.order_status || 'Unknown'}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <p style={styles.muted}>No recent orders found.</p>
+            )}
+          </div>
+
+          {/* Quick Actions */}
+          <SectionTitle>Quick Actions</SectionTitle>
+
+          <div style={styles.grid}>
+            <QuickAction
+              href="/admin/orders"
+              icon={MdListAlt}
+              title="All Orders"
+              description="Manage current customer orders"
+            />
+            <QuickAction
+              href="/admin/order-history"
+              icon={MdHistory}
+              title="Order History"
+              description="Review completed and cancelled orders"
+            />
+            <QuickAction
+              href="/admin/add-product"
+              icon={MdFastfood}
+              title="Add Product"
+              description="Add a new food item"
+            />
+            <QuickAction
+              href="/admin/add-category"
+              icon={MdCategory}
+              title="Add Category"
+              description="Create a food category"
+            />
+            <QuickAction
+              href="/admin/coupons"
+              icon={MdLocalOffer}
+              title="Manage Coupons"
+              description="Create and manage promotional codes"
+            />
+          </div>
+
+          <div style={styles.footerNote}>
+            Dashboard data refreshes automatically every 10 seconds.
+            Use Refresh to load the latest information immediately.
+          </div>
+        </>
+      )}
+    </main>
   );
 }
 
-/*
-  Dashboard statistic card
-*/
-function DashboardCard({
+function SectionTitle({ children }) {
+  return <h2 style={styles.sectionTitle}>{children}</h2>;
+}
+
+function StatCard({
   title,
   value,
   description,
   icon: Icon,
-  iconBackground,
-  iconColor,
+  color,
+  background,
 }) {
   return (
-    <div
-      style={{
-        background: '#fff',
-        border: '1px solid #ddd',
-        borderRadius: '14px',
-        padding: '20px',
-      }}
-    >
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'flex-start',
-          gap: '10px',
-        }}
-      >
+    <div style={styles.statCard}>
+      <div style={styles.statTop}>
         <div>
-          <p
-            style={{
-              margin: 0,
-              color: '#666',
-              fontSize: '14px',
-              fontWeight: '600',
-            }}
-          >
-            {title}
-          </p>
-
-          <h2
-            style={{
-              margin: '10px 0 5px',
-              fontSize: '34px',
-            }}
-          >
-            {value}
-          </h2>
+          <p style={styles.cardLabel}>{title}</p>
+          <h3 style={styles.statValue}>{value}</h3>
         </div>
-
-        <div
-          style={{
-            width: '55px',
-            height: '55px',
-            borderRadius: '14px',
-            background: iconBackground,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
-        >
-          <Icon
-            style={{
-              fontSize: '30px',
-              color: iconColor,
-            }}
-          />
+        <div style={{ ...styles.statIcon, color, background }}>
+          <Icon size={28} />
         </div>
       </div>
-
-      <p
-        style={{
-          margin: '5px 0 0',
-          color: '#777',
-          fontSize: '12px',
-        }}
-      >
-        {description}
-      </p>
+      <p style={styles.mutedSmall}>{description}</p>
     </div>
   );
 }
 
-/*
-  Sales card
-*/
-function SalesCard({
-  title,
-  amount,
-  description,
-}) {
+function MoneyCard({ title, amount, description }) {
   return (
-    <div
-      style={{
-        background: '#fff',
-        border: '1px solid #ddd',
-        borderRadius: '14px',
-        padding: '25px',
-      }}
-    >
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: '8px',
-          marginBottom: '8px',
-        }}
-      >
-        <MdCurrencyRupee
-          style={{
-            fontSize: '22px',
-            color: '#ff5722',
-          }}
-        />
-
-        <span
-          style={{
-            color: '#666',
-            fontWeight: '600',
-          }}
-        >
-          {title}
-        </span>
+    <div style={styles.moneyCard}>
+      <div style={styles.moneyTitle}>
+        <MdCurrencyRupee size={22} color="#ff5722" />
+        <span>{title}</span>
       </div>
-
-      <h2
-        style={{
-          margin: '5px 0 8px',
-          fontSize: '30px',
-        }}
-      >
-        {Number(amount || 0).toLocaleString('en-IN', {
-          style: 'currency',
-          currency: 'INR',
-          minimumFractionDigits: 2,
-        })}
-      </h2>
-
-      <p
-        style={{
-          margin: 0,
-          color: '#777',
-          fontSize: '13px',
-        }}
-      >
-        {description}
-      </p>
+      <h3 style={styles.moneyValue}>{formatCurrency(amount)}</h3>
+      <p style={styles.mutedSmall}>{description}</p>
     </div>
   );
 }
 
-/*
-  Quick action card
-*/
-function QuickAction({
-  href,
-  icon: Icon,
-  title,
-  description,
-}) {
+function formatCurrency(amount) {
+  return `₹${Number(amount || 0).toLocaleString('en-IN', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
+}
+
+function QuickAction({ href, icon: Icon, title, description }) {
   return (
-    <Link
-      href={href}
-      style={{
-        background: '#fff',
-        border: '1px solid #ddd',
-        borderRadius: '12px',
-        padding: '20px',
-        textDecoration: 'none',
-        color: '#222',
-        transition: 'transform 0.2s ease',
-      }}
-    >
-      <Icon
-        style={{
-          fontSize: '38px',
-          color: '#ff5722',
-          marginBottom: '10px',
-        }}
-      />
-
-      <h3
-        style={{
-          margin: '0 0 7px',
-        }}
-      >
-        {title}
-      </h3>
-
-      <p
-        style={{
-          color: '#666',
-          margin: 0,
-          fontSize: '13px',
-          lineHeight: '1.5',
-        }}
-      >
-        {description}
-      </p>
+    <Link href={href} style={styles.quickAction}>
+      <Icon size={34} color="#ff5722" />
+      <h3 style={styles.quickTitle}>{title}</h3>
+      <p style={styles.mutedSmall}>{description}</p>
     </Link>
   );
 }
+
+const styles = {
+  page: {
+    maxWidth: 1400,
+    margin: '0 auto',
+    padding: '10px 0 35px',
+    color: '#242424',
+  },
+  header: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 16,
+    flexWrap: 'wrap',
+    marginBottom: 28,
+  },
+  pageTitle: { margin: '0 0 8px', fontSize: 30 },
+  sectionTitle: {
+    fontSize: 22,
+    margin: '32px 0 15px',
+  },
+  muted: { color: '#666', lineHeight: 1.6 },
+  mutedSmall: {
+    color: '#777',
+    fontSize: 12,
+    lineHeight: 1.6,
+    margin: '7px 0 0',
+  },
+  mutedTiny: { color: '#777', fontSize: 11, marginTop: 5 },
+  grid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))',
+    gap: 15,
+  },
+  paymentGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(245px, 1fr))',
+    gap: 16,
+  },
+  statCard: {
+    background: '#fff',
+    border: '1px solid #e5e5e5',
+    borderRadius: 13,
+    padding: 19,
+    minWidth: 0,
+  },
+  statTop: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    gap: 12,
+  },
+  cardLabel: { color: '#666', margin: 0, fontSize: 13 },
+  statValue: { fontSize: 31, margin: '9px 0 4px' },
+  statIcon: {
+    width: 49,
+    height: 49,
+    borderRadius: 12,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  moneyCard: {
+    background: '#fff',
+    border: '1px solid #e5e5e5',
+    borderRadius: 13,
+    padding: 22,
+    minWidth: 0,
+  },
+  moneyTitle: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 7,
+    color: '#555',
+    fontWeight: 600,
+  },
+  moneyValue: { fontSize: 26, margin: '12px 0 6px' },
+  paymentCard: {
+    background: '#fff',
+    border: '1px solid #e5e5e5',
+    borderRadius: 14,
+    padding: 20,
+    minWidth: 0,
+  },
+  paymentCardTop: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  paymentIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 12,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  percentageBadge: {
+    borderRadius: 20,
+    padding: '6px 10px',
+    fontSize: 12,
+    fontWeight: 700,
+  },
+  paymentLabel: { margin: '17px 0 5px', color: '#555', fontSize: 14 },
+  paymentCount: { fontSize: 28, margin: '6px 0' },
+  smallText: { fontSize: 13, color: '#777', fontWeight: 400 },
+  paymentValue: { fontSize: 21, fontWeight: 700, margin: '8px 0 0' },
+  progressTrack: {
+    width: '100%',
+    height: 9,
+    borderRadius: 20,
+    overflow: 'hidden',
+    background: '#eeeeee',
+    marginTop: 9,
+  },
+  progressBar: {
+    height: '100%',
+    borderRadius: 20,
+    minWidth: 0,
+    transition: 'width 0.3s ease',
+  },
+  cancelledRow: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    gap: 10,
+    fontSize: 12,
+    color: '#666',
+    marginTop: 13,
+  },
+  panel: {
+    background: '#fff',
+    border: '1px solid #e5e5e5',
+    borderRadius: 13,
+    padding: 22,
+    marginTop: 15,
+    minWidth: 0,
+  },
+  panelTitle: { margin: '0 0 6px', fontSize: 18 },
+  chartRow: { marginTop: 20 },
+  chartLabel: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    gap: 12,
+    fontSize: 13,
+    marginBottom: 7,
+  },
+  paymentSummary: {
+    display: 'flex',
+    gap: 35,
+    flexWrap: 'wrap',
+    borderTop: '1px solid #eee',
+    marginTop: 25,
+    paddingTop: 18,
+  },
+  note: {
+    margin: '20px 0 0',
+    padding: 12,
+    background: '#fff8e1',
+    color: '#705200',
+    borderRadius: 8,
+    fontSize: 12,
+    lineHeight: 1.7,
+  },
+  salesChart: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(7, minmax(0, 1fr))',
+    gap: 10,
+    alignItems: 'end',
+    overflowX: 'auto',
+  },
+  salesBarColumn: {
+    minWidth: 65,
+    textAlign: 'center',
+  },
+  barValue: {
+    display: 'block',
+    fontSize: 10,
+    color: '#555',
+    overflowWrap: 'anywhere',
+  },
+  salesBarArea: {
+    height: 155,
+    display: 'flex',
+    alignItems: 'flex-end',
+    justifyContent: 'center',
+    marginTop: 8,
+  },
+  salesBar: {
+    width: '65%',
+    minWidth: 9,
+    background: '#ff5722',
+    borderRadius: '6px 6px 0 0',
+  },
+  barLabel: { display: 'block', fontSize: 12, marginTop: 9 },
+  tableWrap: { overflowX: 'auto' },
+  table: {
+    width: '100%',
+    borderCollapse: 'collapse',
+    fontSize: 13,
+    textAlign: 'left',
+  },
+  th: {
+    padding: '13px 12px',
+    background: '#f7f7f7',
+    borderBottom: '1px solid #ddd',
+    whiteSpace: 'nowrap',
+  },
+  td: {
+    padding: '13px 12px',
+    borderBottom: '1px solid #eee',
+    whiteSpace: 'nowrap',
+  },
+  statusPill: {
+    display: 'inline-block',
+    background: '#f3f3f3',
+    padding: '5px 9px',
+    borderRadius: 15,
+    fontSize: 11,
+  },
+  quickAction: {
+    display: 'block',
+    background: '#fff',
+    border: '1px solid #e5e5e5',
+    borderRadius: 12,
+    padding: 20,
+    color: '#222',
+    textDecoration: 'none',
+  },
+  quickTitle: { margin: '10px 0 6px', fontSize: 16 },
+  footerNote: {
+    color: '#777',
+    fontSize: 12,
+    marginTop: 25,
+    lineHeight: 1.6,
+  },
+  refreshButton: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 7,
+    border: '1px solid #ddd',
+    borderRadius: 8,
+    padding: '10px 15px',
+    background: '#fff',
+    cursor: 'pointer',
+    fontWeight: 600,
+  },
+  error: {
+    background: '#ffebee',
+    border: '1px solid #ef9a9a',
+    color: '#b71c1c',
+    padding: 13,
+    borderRadius: 8,
+    marginBottom: 20,
+  },
+  retryButton: {
+    marginLeft: 12,
+    padding: '5px 9px',
+    cursor: 'pointer',
+  },
+  messageCard: {
+    background: '#fff',
+    border: '1px solid #ddd',
+    borderRadius: 12,
+    padding: 35,
+    textAlign: 'center',
+  },
+  primaryLink: {
+    display: 'inline-block',
+    background: '#ff5722',
+    color: '#fff',
+    textDecoration: 'none',
+    padding: '11px 20px',
+    borderRadius: 7,
+    marginTop: 12,
+  },
+};
